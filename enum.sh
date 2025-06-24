@@ -4,152 +4,237 @@
 TARGET="target"
 DOMAIN="$TARGET.com"
 
+# Criar pasta log se não existir
+mkdir -p log
+
 echo "[*] Iniciando enumeração para: $DOMAIN"
+echo "[*] Logs serão salvos em: log/"
 
 # 1. Informações básicas
-whois $DOMAIN
-nslookup $DOMAIN
-dig $DOMAIN
-host -t ns $DOMAIN
-host -t mx $DOMAIN
+echo "[1/35] Informações básicas..."
+whois $DOMAIN > log/whois.txt 2>&1
+nslookup $DOMAIN > log/nslookup.txt 2>&1
+dig $DOMAIN > log/dig.txt 2>&1
+host -t ns $DOMAIN > log/host_ns.txt 2>&1
+host -t mx $DOMAIN > log/host_mx.txt 2>&1
 
 # 2. Subdomínios
-sublist3r -d $DOMAIN
-amass enum -d $DOMAIN
-assetfinder --subs-only $DOMAIN
-findomain -t $DOMAIN
-massdns -r resolvers.txt -t A -o S -w results.txt subdomains.txt
-httprobe < subdomains.txt > live_subdomains.txt
+echo "[2/35] Enumeração de subdomínios..."
+sublist3r -d $DOMAIN -o log/sublist3r.txt 2>&1
+amass enum -d $DOMAIN -o log/amass.txt 2>&1
+assetfinder --subs-only $DOMAIN > log/assetfinder.txt 2>&1
+findomain -t $DOMAIN -o log/findomain.txt 2>&1
+
+# Combinar subdomínios
+cat log/sublist3r.txt log/amass.txt log/assetfinder.txt log/findomain.txt 2>/dev/null | sort | uniq > log/subdomains.txt
+
+# Massdns se subdomains.txt existir
+if [ -s log/subdomains.txt ]; then
+    massdns -r resolvers.txt -t A -o S -w log/massdns_results.txt log/subdomains.txt 2>&1
+    httprobe < log/subdomains.txt > log/live_subdomains.txt 2>&1
+fi
 
 # 3. Hosts ativos
-httpx -l subdomains.txt -o live_hosts.txt
-nmap -iL live_hosts.txt -oA nmap_scan
-whatweb -i live_hosts.txt
+echo "[3/35] Verificação de hosts ativos..."
+if [ -s log/subdomains.txt ]; then
+    httpx -l log/subdomains.txt -o log/live_hosts.txt 2>&1
+    nmap -iL log/live_hosts.txt -oA log/nmap_scan 2>&1
+    whatweb -i log/live_hosts.txt > log/whatweb.txt 2>&1
+fi
 
 # 4. Screenshots de hosts
-aquatone-discover -d $DOMAIN
+echo "[4/35] Capturando screenshots..."
+if [ -s log/live_hosts.txt ]; then
+    aquatone-discover -d $DOMAIN -o log/aquatone/ 2>&1
+fi
 
 # 5. URLs históricas
-waybackurls $DOMAIN | tee waybackurls.txt
-gau $DOMAIN | tee gau_urls.txt
+echo "[5/35] URLs históricas..."
+waybackurls $DOMAIN > log/waybackurls.txt 2>&1
+gau $DOMAIN > log/gau_urls.txt 2>&1
 
 # 6. Rastreamento de links
-hakrawler -url $DOMAIN -depth 2 -plain | tee hakrawler_output.txt
+echo "[6/35] Rastreamento de links..."
+if [ -s log/live_hosts.txt ]; then
+    hakrawler -url $DOMAIN -depth 2 -plain > log/hakrawler_output.txt 2>&1
+fi
 
 # 7. Busca em repositórios
-github-search $DOMAIN
-gitrob -repo $DOMAIN
+echo "[7/35] Busca em repositórios..."
+github-search $DOMAIN > log/github_search.txt 2>&1
+gitrob -repo $DOMAIN > log/gitrob.txt 2>&1
 
 # 8. DNS e força bruta
-fierce --domain $DOMAIN
-dnsrecon -u $DOMAIN -e *
-ffuf -w wordlist.txt -u https://$DOMAIN/FUZZ
+echo "[8/35] DNS e força bruta..."
+fierce --domain $DOMAIN > log/fierce.txt 2>&1
+dnsrecon -u $DOMAIN -e * > log/dnsrecon.txt 2>&1
+ffuf -w /usr/share/wordlists/dirb/common.txt -u https://$DOMAIN/FUZZ -o log/ffuf.txt 2>&1
 
 # 9. Captura de tela dos hosts
-gowitness file -f live_hosts.txt -P screenshots/
+echo "[9/35] Captura de tela..."
+if [ -s log/live_hosts.txt ]; then
+    gowitness file -f log/live_hosts.txt -P log/screenshots/ 2>&1
+fi
 
 # 10. Scan de vulnerabilidades
-nuclei -l live_hosts.txt -t templates/
+echo "[10/35] Scan de vulnerabilidades..."
+if [ -s log/live_hosts.txt ]; then
+    nuclei -l log/live_hosts.txt -t templates/ -o log/nuclei.txt 2>&1
+fi
 
 # 11. Metadados
-metabigor net --org $DOMAIN
-metagoofil -d $DOMAIN -t doc,pdf,xls,docx,xlsx,ppt,pptx -l 100
-theHarvester -d $DOMAIN -l 500 -b all
+echo "[11/35] Metadados..."
+metabigor net --org $DOMAIN > log/metabigor.txt 2>&1
+metagoofil -d $DOMAIN -t doc,pdf,xls,docx,xlsx,ppt,pptx -l 100 > log/metagoofil.txt 2>&1
+theHarvester -d $DOMAIN -l 500 -b all > log/theharvester.txt 2>&1
 
 # 12. DNS avançado
-dnsenum $DOMAIN
-dnsrecon -d $DOMAIN
+echo "[12/35] DNS avançado..."
+dnsenum $DOMAIN > log/dnsenum.txt 2>&1
+dnsrecon -d $DOMAIN > log/dnsrecon_advanced.txt 2>&1
 
 # 13. Shodan/Censys
-shodan search hostname:$DOMAIN
-censys search $DOMAIN
+echo "[13/35] Shodan/Censys..."
+shodan search hostname:$DOMAIN > log/shodan.txt 2>&1
+censys search $DOMAIN > log/censys.txt 2>&1
 
 # 14. SpiderFoot
-spiderfoot -s $DOMAIN -o spiderfoot_report.html
+echo "[14/35] SpiderFoot..."
+spiderfoot -s $DOMAIN -o log/spiderfoot_report.html 2>&1
 
 # 15. Subfinder/Sn1per
-sn1per -t $DOMAIN
-subfinder -d $DOMAIN -o subfinder_results.txt
-wafw00f $DOMAIN
+echo "[15/35] Subfinder/Sn1per..."
+sn1per -t $DOMAIN > log/sn1per.txt 2>&1
+subfinder -d $DOMAIN -o log/subfinder_results.txt 2>&1
+wafw00f $DOMAIN > log/wafw00f.txt 2>&1
 
 # 16. Testes de formulários
-arjun -u https://$DOMAIN -oT arjun_output.txt
+echo "[16/35] Testes de formulários..."
+arjun -u https://$DOMAIN -oT log/arjun_output.txt 2>&1
 
 # 17. Subdomain takeover
-subjack -w subdomains.txt -t 20 -o subjack_results.txt
+echo "[17/35] Subdomain takeover..."
+if [ -s log/subdomains.txt ]; then
+    subjack -w log/subdomains.txt -t 20 -o log/subjack_results.txt 2>&1
+fi
 
 # 18. Fuzz e coleta com MEG
-meg -d 1000 -v /path/to/live_subdomains.txt
-waymore -u $DOMAIN -o waymore_results.txt
-unfurl -u $DOMAIN -o unfurl_results.txt
-dalfox file live_hosts.txt
+echo "[18/35] Fuzz e coleta..."
+if [ -s log/live_subdomains.txt ]; then
+    meg -d 1000 -v log/live_subdomains.txt > log/meg_results.txt 2>&1
+fi
+waymore -u $DOMAIN -o log/waymore_results.txt 2>&1
+unfurl -u $DOMAIN -o log/unfurl_results.txt 2>&1
+if [ -s log/live_hosts.txt ]; then
+    dalfox file log/live_hosts.txt > log/dalfox.txt 2>&1
+fi
 
 # 19. Crawlers
-gospider -S live_hosts.txt -o gospider_output/
-recon-ng -w workspace1
-xray webscan --basic-crawler http://$DOMAIN
+echo "[19/35] Crawlers..."
+if [ -s log/live_hosts.txt ]; then
+    gospider -S log/live_hosts.txt -o log/gospider_output/ 2>&1
+fi
+recon-ng -w workspace1 > log/recon-ng.txt 2>&1
+xray webscan --basic-crawler http://$DOMAIN > log/xray.txt 2>&1
 
 # 20. XSS, SQLi, etc
-vhost -u $DOMAIN -o vhost_results.txt
-gf xss | tee xss_payloads.txt
-gf sqli | tee sqli_payloads.txt
-gf lfi | tee lfi_payloads.txt
-gf rfi | tee rfi_payloads.txt
-gf ssti | tee ssti_payloads.txt
+echo "[20/35] Testes de vulnerabilidades..."
+vhost -u $DOMAIN -o log/vhost_results.txt 2>&1
+gf xss > log/xss_payloads.txt 2>&1
+gf sqli > log/sqli_payloads.txt 2>&1
+gf lfi > log/lfi_payloads.txt 2>&1
+gf rfi > log/rfi_payloads.txt 2>&1
+gf ssti > log/ssti_payloads.txt 2>&1
 
 # 21. Segredos
-git-secrets --scan
+echo "[21/35] Busca de segredos..."
+git-secrets --scan > log/git-secrets.txt 2>&1
 
 # 22. DNS avançado
-shuffledns -d $DOMAIN -list resolvers.txt -o shuffledns_results.txt
-dnsgen -f subdomains.txt | massdns -r resolvers.txt -t A -o S -w dnsgen_results.txt
+echo "[22/35] DNS avançado..."
+shuffledns -d $DOMAIN -list resolvers.txt -o log/shuffledns_results.txt 2>&1
+if [ -s log/subdomains.txt ]; then
+    dnsgen -f log/subdomains.txt | massdns -r resolvers.txt -t A -o S -w log/dnsgen_results.txt 2>&1
+fi
 
 # 23. Map CIDR e Subs
-mapcidr -silent -cidr $DOMAIN -o mapcidr_results.txt
-tko-subs --domains=$DOMAIN --data=providers-data.csv
+echo "[23/35] Map CIDR e Subs..."
+mapcidr -silent -cidr $DOMAIN -o log/mapcidr_results.txt 2>&1
+tko-subs --domains=$DOMAIN --data=providers-data.csv > log/tko-subs.txt 2>&1
 
 # 24. Outras coletas
-kiterunner -w wordlist.txt -u https://$DOMAIN
-github-dorker -d $DOMAIN
-gfredirect -u $DOMAIN
-paramspider --domain $DOMAIN --output paramspider_output.txt
-dirb https://$DOMAIN -o dirb_output.txt
+echo "[24/35] Outras coletas..."
+kiterunner -w /usr/share/wordlists/dirb/common.txt -u https://$DOMAIN > log/kiterunner.txt 2>&1
+github-dorker -d $DOMAIN > log/github-dorker.txt 2>&1
+gfredirect -u $DOMAIN > log/gfredirect.txt 2>&1
+paramspider --domain $DOMAIN --output log/paramspider_output.txt 2>&1
+dirb https://$DOMAIN -o log/dirb_output.txt 2>&1
 
 # 25. WPScan e Cloud
-wpscan --url $DOMAIN
-cloud_enum -t $DOMAIN -l cloud_enum_output.txt
+echo "[25/35] WPScan e Cloud..."
+wpscan --url $DOMAIN > log/wpscan.txt 2>&1
+cloud_enum -t $DOMAIN -l log/cloud_enum_output.txt 2>&1
 
 # 26. Gobuster DNS
-gobuster dns -d $DOMAIN -t 50 -w wordlist.txt
+echo "[26/35] Gobuster DNS..."
+gobuster dns -d $DOMAIN -t 50 -w /usr/share/wordlists/dirb/common.txt > log/gobuster_dns.txt 2>&1
 
 # 27. Subdomain brute
-subzero -d $DOMAIN
-dnswalk $DOMAIN
-masscan -iL live_hosts.txt -p0-65535 -oX masscan_results.xml
+echo "[27/35] Subdomain brute..."
+subzero -d $DOMAIN > log/subzero.txt 2>&1
+dnswalk $DOMAIN > log/dnswalk.txt 2>&1
+if [ -s log/live_hosts.txt ]; then
+    masscan -iL log/live_hosts.txt -p0-65535 -oX log/masscan_results.xml 2>&1
+fi
 
 # 28. Ferramentas de fuzz
-xsstrike -u https://$DOMAIN
-by4xx https://$DOMAIN/FUZZ
+echo "[28/35] Ferramentas de fuzz..."
+xsstrike -u https://$DOMAIN > log/xsstrike.txt 2>&1
+by4xx https://$DOMAIN/FUZZ > log/by4xx.txt 2>&1
 
 # 29. DNSX
-dnsx -l subdomains.txt --resp-only -o dnsx_results.txt
+echo "[29/35] DNSX..."
+if [ -s log/subdomains.txt ]; then
+    dnsx -l log/subdomains.txt --resp-only -o log/dnsx_results.txt 2>&1
+fi
 
 # 30. Wayback
-waybackpacket -d output/
+echo "[30/35] Wayback..."
+waybackpacket -d log/waybackpacket/ 2>&1
 
 # 31. DNS puro
-puredns resolve subdomains.txt -r resolvers.txt -w puredns_results.txt
+echo "[31/35] DNS puro..."
+if [ -s log/subdomains.txt ]; then
+    puredns resolve log/subdomains.txt -r resolvers.txt -w log/puredns_results.txt 2>&1
+fi
 
 # 32. CTFR
-ctfr -d $DOMAIN -o ctfr_results.txt
+echo "[32/35] CTFR..."
+ctfr -d $DOMAIN -o log/ctfr_results.txt 2>&1
 
 # 33. Validação de resolvers
-dnsvalidator -t 100 -f resolvers.txt -o validated_resolvers.txt
+echo "[33/35] Validação de resolvers..."
+dnsvalidator -t 100 -f resolvers.txt -o log/validated_resolvers.txt 2>&1
 
 # 34. Httpx avançado
-httpx -silent -l live_subdomains.txt -mc 200 -title -tech-detect -o httpx_results.txt
+echo "[34/35] Httpx avançado..."
+if [ -s log/live_subdomains.txt ]; then
+    httpx -silent -l log/live_subdomains.txt -mc 200 -title -tech-detect -o log/httpx_results.txt 2>&1
+fi
 
 # 35. Cloud Enum (alternativo)
-cloud_enum -k $TARGET -l cloud_enum_results.txt
+echo "[35/35] Cloud Enum (alternativo)..."
+cloud_enum -k $TARGET -l log/cloud_enum_results.txt 2>&1
+
+# Gerar relatório final
+echo "[*] Gerando relatório final..."
+echo "=== RELATÓRIO DE ENUMERAÇÃO ===" > log/relatorio_final.txt
+echo "Alvo: $DOMAIN" >> log/relatorio_final.txt
+echo "Data: $(date)" >> log/relatorio_final.txt
+echo "" >> log/relatorio_final.txt
+echo "Arquivos gerados:" >> log/relatorio_final.txt
+ls -la log/ >> log/relatorio_final.txt
 
 echo "[*] Enumeração finalizada para: $DOMAIN"
+echo "[*] Todos os logs foram salvos em: log/"
+echo "[*] Relatório final: log/relatorio_final.txt"

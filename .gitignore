@@ -1,0 +1,76 @@
+# Logs de enumeração
+log/
+logs/
+*.log
+
+# Resultados de scans
+results/
+output/
+reports/
+
+# Arquivos temporários
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# Arquivos de configuração sensíveis
+config/
+secrets/
+*.key
+*.pem
+*.crt
+
+# Arquivos de wordlists grandes
+wordlists/
+*.txt
+!resolvers.txt
+
+# Screenshots
+screenshots/
+*.png
+*.jpg
+*.jpeg
+
+# Arquivos de relatórios
+*.html
+*.pdf
+*.xml
+*.json
+
+# Arquivos de cache
+.cache/
+cache/
+
+# Arquivos de sessão
+*.session
+*.db
+
+# Arquivos de backup
+backup/
+*.backup
+
+# Arquivos de configuração local
+.env
+.env.local
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
+
+# Arquivos de IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Arquivos de compilação
+*.o
+*.so
+*.dll
+*.exe
+
+# Arquivos de instalação
+install/
+build/
+dist/ 
