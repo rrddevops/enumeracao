@@ -170,9 +170,9 @@ fi
 echo "Instalando Xray..."
 wget https://github.com/chaitin/xray/releases/download/1.9.13/xray_linux_amd64.zip 2>/dev/null
 if [ -f xray_linux_amd64.zip ]; then
-    unzip xray_linux_amd64.zip
-    chmod +x xray
-    sudo mv xray /usr/local/bin/
+unzip xray_linux_amd64.zip
+chmod +x xray
+sudo mv xray /usr/local/bin/
     rm xray_linux_amd64.zip
     echo "✅ Xray instalado com sucesso"
 else
